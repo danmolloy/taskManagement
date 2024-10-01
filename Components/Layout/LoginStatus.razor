@@ -1,0 +1,52 @@
+@rendermode InteractiveServer
+@inject UserManager<IdentityUser> UserManager
+@inject SignInManager<IdentityUser> SignInManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+
+<div>
+  @if (isLoggedIn)
+  {
+    <p>Hello, @userName</p>
+    <button class="nav-link btn btn-link text-dark" @onclick="Logout">Log out</button>
+  }
+  else
+  {
+    <button @onclick="NavigateToLogin">Log in</button>
+    <button  @onclick="NavigateToRegister">Register</button>
+  }
+</div>
+
+@code {
+    private string? userName;
+    private bool isLoggedIn;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+          isLoggedIn = true;
+            var identityUser = await UserManager.GetUserAsync(user);
+            userName = identityUser?.UserName;
+        }
+    }
+    private void Logout()
+    {
+      Console.WriteLine("Logout clicked");
+      //await SignInManager.SignOutAsync();
+      NavigationManager.NavigateTo("/Identity/Account/Logout", true);
+    }
+
+    private void NavigateToLogin()
+    {
+        NavigationManager.NavigateTo("/Identity/Account/Login");
+    }
+    private void NavigateToRegister()
+    {
+        NavigationManager.NavigateTo("/Identity/Account/Register");
+    }
+}

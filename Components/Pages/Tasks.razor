@@ -1,0 +1,155 @@
+@page "/"
+@rendermode InteractiveServer
+@using TaskManagement.Models
+@using TaskManagement.Services
+@inject TaskService TaskService
+@inject UserManager<IdentityUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Tasks</PageTitle>
+
+<h3>Tasks (@tasks.Count(task => !task.IsCompleted))</h3>
+
+<InputSelect @bind-Value="selectedSortOption">
+  <option value="CreatedDate">Created date</option>
+  <option value="IsComplete">Completion status</option>
+</InputSelect>
+
+<InputSelect @bind-Value="showCompleted">
+  <option value="true">Show Completed</option>
+  <option value="false">Hide Completed</option>
+</InputSelect>
+
+@if (!isLoggedIn) 
+{
+  <div class="help-div">
+    <p class="help-text">To save your tasks, log in.</p>
+  </div>
+}
+
+@if (GetSortedTasks().Count() == 0) 
+{
+  <div class="help-div">
+    <p class="help-text">No tasks.</p>
+  </div>
+}
+
+<ul class="tasks-list">
+  @foreach (var task in GetSortedTasks())
+  {
+    if (showCompleted || !task.IsCompleted)
+    {
+      <li class="task-li">
+        <div class="checkbox-text">
+          <InputCheckbox 
+            Value="task.IsCompleted" 
+            ValueChanged="async (isChecked) => await MarkAsCompleted(task)" 
+            ValueExpression="() => task.IsCompleted" />
+
+        <div class="task-text">
+              <p class=@(task.IsCompleted?"task-title line-through":"task-title")>@task.Title</p>
+              <p class=@(task.IsCompleted?"task-description line-through":"task-description")>@task.Description</p>
+          </div>
+        </div>
+        <button class="task-delete-btn" @onclick="() => DeleteTask(task)">Delete</button>
+      </li>
+    } 
+  }
+</ul>
+<div class="create-form">
+  <input class="form-input" placeholder="Your task..." @bind="newTaskTitle"/>
+  <input class="form-input" placeholder="Description" @bind="newTaskDescription"/>
+
+  <button class="form-btn" @onclick="AddTask">Add Task</button>
+
+</div>
+
+@code {
+  private List<TaskItem> tasks = new List<TaskItem>();
+  private bool showCompleted = true;
+  private string selectedSortOption = "CreatedDate";
+  private string? newTaskTitle;
+  private string? newTaskDescription;
+  private IdentityUser? identityUser;
+  private bool isLoggedIn = false;
+
+  protected override async Task OnInitializedAsync()
+  {
+    var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    var user = authState.User;
+
+    if (user.Identity?.IsAuthenticated ?? false)
+    {
+      identityUser = await UserManager.GetUserAsync(user);
+      if (identityUser != null)
+      {
+        isLoggedIn = true;
+        tasks = await TaskService.GetUserTasksAsync(identityUser);
+      }
+    }
+  }
+
+  private IEnumerable<TaskItem> GetSortedTasks()
+    {
+      return selectedSortOption switch
+      {
+        "CreatedDate" => tasks.OrderBy(task => task.Id),
+        "IsComplete" => tasks.OrderBy(task => task.IsCompleted),
+        _ => tasks
+      };
+    }
+ private async Task AddTask()
+  {
+    if (!string.IsNullOrWhiteSpace(newTaskTitle))
+    {
+      if (isLoggedIn)
+      {
+        var newTask = new TaskItem 
+        { 
+          Id = tasks.Count + 1,
+          Title = newTaskTitle, 
+          IsCompleted = false,
+          UserId = identityUser!.Id,
+          Description = newTaskDescription,
+        };
+      
+        await TaskService.AddTaskAsync(newTask, identityUser);
+        tasks = await TaskService.GetUserTasksAsync(identityUser);
+      } else {
+        tasks.Add(new TaskItem {
+          Id = tasks.Count + 1,
+          Title = newTaskTitle, 
+          IsCompleted = false,
+          UserId = "guest",
+          Description = newTaskDescription,
+        });
+      }
+      newTaskTitle = string.Empty;
+      newTaskDescription = string.Empty;
+    }
+  }
+
+  private async Task MarkAsCompleted(TaskItem task)
+  {
+    if (isLoggedIn) 
+    {
+      await TaskService.UpdateTaskCompleted(task.Id);
+      tasks = await TaskService.GetUserTasksAsync(identityUser!);
+      StateHasChanged();
+    } else {
+      bool IsComplete = task.IsCompleted;
+      task.IsCompleted = !IsComplete;
+    }
+  }
+
+  private async Task DeleteTask(TaskItem task)
+  {
+    if (isLoggedIn)
+    {
+      await TaskService.DeleteTaskAsync(task);
+      tasks = await TaskService.GetUserTasksAsync(identityUser!);
+    } else {
+      tasks.Remove(task);
+    }
+  }
+}        
